@@ -1,16 +1,17 @@
 package main
 
+import "C"
 import (
 	"fmt"
-	"image"
-	"image/color"
 	_ "image/jpeg"
 	_ "image/png"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"unsafe"
 
+	"github.com/cjun714/go-image-stb/stb"
 	_ "github.com/cjun714/go-image/tga"
 	"github.com/cjun714/go-image/webp"
 )
@@ -34,22 +35,19 @@ func main() {
 		wg.Add(1)
 		go func(path string) {
 			defer wg.Done()
-			f, e := os.Open(path)
+
+			pixPtr, w, h, comps, e := stb.Load(path)
+			defer stb.Free(pixPtr)
 			if e != nil {
-				fmt.Printf("open %s failed, error:%s\n", path, e)
-				return
-			}
-			defer f.Close()
-			img, imgType, e := image.Decode(f)
-			if e != nil {
-				fmt.Printf("decode image failed, error:%s\n", e)
+				fmt.Printf("encode image failde %s", path)
 				return
 			}
 
-			if isNormal(img) {
+			pix := C.GoBytes(unsafe.Pointer(pixPtr), C.int(w*h*comps))
+			if isNormal(pix, comps) {
 				fmt.Println("normal map:", path)
 
-				if imgType == "jpeg" { // skip .jpg normal map
+				if strings.HasSuffix(path, ".jpeg") { // skip .jpg normal map
 					return
 				}
 				quality = 100
@@ -71,7 +69,7 @@ func main() {
 				fmt.Printf("crate webp config failed, %s, error:%s\n", name, e)
 				return
 			}
-			if e = webp.Encode(wr, img, cfg); e != nil {
+			if e = webp.EncodePixBytes(wr, pix, w, h, comps, cfg); e != nil {
 				fmt.Printf("encode %s failed, error:%s\n", name, e)
 			}
 		}(path)
@@ -104,16 +102,14 @@ func isImage(path string) bool {
 	return false
 }
 
-func isNormal(img image.Image) bool {
+func isNormal(pix []byte, comps int) bool {
 	var r, g, b uint8
 
-	switch t := img.(type) {
-	case *image.NRGBA:
-		r, g, b = checkRGBA(t.Pix)
-	case *image.RGBA:
-		r, g, b = checkRGBA(t.Pix)
-	case *image.YCbCr:
-		r, g, b = checkYCbCr(t)
+	switch comps {
+	case 3:
+		r, g, b = checkRGB(pix)
+	case 4:
+		r, g, b = checkRGBA(pix)
 	default:
 		return false
 	}
@@ -124,6 +120,23 @@ func isNormal(img image.Image) bool {
 	}
 
 	return false
+}
+
+func checkRGB(bts []byte) (uint8, uint8, uint8) {
+	r, g, b := 0.0, 0.0, 0.0
+
+	length := len(bts) / 3
+	count := 0
+
+	for i := 0; i < length; i++ {
+		r += float64(bts[i*3])
+		g += float64(bts[i*3+1])
+		b += float64(bts[i*3+2])
+		count++
+	}
+	r, g, b = r/float64(count), g/float64(count), b/float64(count)
+
+	return uint8(r), uint8(g), uint8(b)
 }
 
 func checkRGBA(bts []byte) (uint8, uint8, uint8) {
@@ -141,32 +154,6 @@ func checkRGBA(bts []byte) (uint8, uint8, uint8) {
 		b += float64(bts[i*4+2])
 		count++
 	}
-	r, g, b = r/float64(count), g/float64(count), b/float64(count)
-
-	return uint8(r), uint8(g), uint8(b)
-}
-
-func checkYCbCr(img *image.YCbCr) (uint8, uint8, uint8) {
-	w := img.Bounds().Size().X
-	h := img.Bounds().Size().Y
-
-	r, g, b := 0.0, 0.0, 0.0
-	count := 0
-	for y := 0; y < h; y++ {
-		for x := 0; x < w; x++ {
-			c := img.YCbCrAt(x, y)
-			R, G, B := color.YCbCrToRGB(c.Y, c.Cb, c.Cr)
-			if R == 0 && G == 0 && B == 0 || R == 255 && G == 255 && B == 255 {
-				continue
-			}
-			r += float64(R)
-			g += float64(G)
-			b += float64(B)
-
-			count++
-		}
-	}
-
 	r, g, b = r/float64(count), g/float64(count), b/float64(count)
 
 	return uint8(r), uint8(g), uint8(b)
