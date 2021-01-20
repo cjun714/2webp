@@ -6,14 +6,16 @@ import (
 	"image/color"
 	_ "image/jpeg"
 	_ "image/png"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	_ "github.com/cjun714/go-image/tga"
 	"github.com/cjun714/go-image/webp"
 )
+
+var quality = 85
 
 func main() {
 	src := os.Args[1]
@@ -23,47 +25,60 @@ func main() {
 		targetDir = os.Args[2]
 	}
 
+	var wg sync.WaitGroup
 	e := filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if !isImage(path) {
 			return nil
 		}
 
-		f, e := os.Open(path)
-		if e != nil {
-			return e
-		}
-		defer f.Close()
-		img, imgType, e := image.Decode(f)
-		if e != nil {
-			fmt.Println(path)
-			return e
-		}
-
-		quality := 85
-		if isNormal(img) {
-			fmt.Println("normal map:", path)
-
-			if imgType == "jpeg" { // skip jpg normal map
-				return nil
+		wg.Add(1)
+		go func(path string) {
+			defer wg.Done()
+			f, e := os.Open(path)
+			if e != nil {
+				fmt.Printf("open %s failed, error:%s\n", path, e)
+				return
 			}
-			quality = 100
-		}
+			defer f.Close()
+			img, imgType, e := image.Decode(f)
+			if e != nil {
+				fmt.Printf("decode image failed, error:%s\n", e)
+				return
+			}
 
-		byts, e := webp.Encode(img, quality)
-		if e != nil {
-			return e
-		}
-		ext := filepath.Ext(path)
-		name := strings.TrimSuffix(path, ext)
-		name = name + ".webp"
-		name = filepath.Join(targetDir, filepath.Base(name))
-		e = ioutil.WriteFile(name, byts, 0666)
-		if e != nil {
-			return e
-		}
+			if isNormal(img) {
+				fmt.Println("normal map:", path)
+
+				if imgType == "jpeg" { // skip .jpg normal map
+					return
+				}
+				quality = 100
+			}
+
+			ext := filepath.Ext(path)
+			name := strings.TrimSuffix(path, ext)
+			name = name + ".webp"
+			name = filepath.Join(targetDir, filepath.Base(name))
+
+			wr, e := os.Create(name)
+			if e != nil {
+				fmt.Printf("create file %s failed, error:%s\n", name, e)
+				return
+			}
+			defer wr.Close()
+			cfg, e := webp.ConfigPreset(webp.PRESET_PHOTO, quality)
+			if e != nil {
+				fmt.Printf("crate webp config failed, %s, error:%s\n", name, e)
+				return
+			}
+			if e = webp.Encode(wr, img, cfg); e != nil {
+				fmt.Printf("encode %s failed, error:%s\n", name, e)
+			}
+		}(path)
 
 		return nil
 	})
+	wg.Wait()
 
 	if e != nil {
 		panic(e)
