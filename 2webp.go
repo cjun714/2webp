@@ -3,10 +3,9 @@ package main
 import "C"
 import (
 	"fmt"
-	_ "image/jpeg"
-	_ "image/png"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"unsafe"
@@ -16,18 +15,27 @@ import (
 	"github.com/cjun714/go-image/webp"
 )
 
-var quality = 85
+var quality int = 95
 
 func main() {
 	src := os.Args[1]
 	targetDir := os.Args[1]
 
+	var e error
 	if len(os.Args) == 3 {
-		targetDir = os.Args[2]
+		if strings.HasPrefix(os.Args[2], "-q") {
+			quality, e = strconv.Atoi(os.Args[2][2:])
+			if e != nil {
+				panic(e)
+			}
+		} else {
+			targetDir = os.Args[2]
+		}
 	}
 
+	fmt.Println("quality:", quality)
 	var wg sync.WaitGroup
-	e := filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+	e = filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if !isImage(path) {
 			return nil
 		}
@@ -36,6 +44,7 @@ func main() {
 		go func(path string) {
 			defer wg.Done()
 
+			qua := quality
 			pixPtr, w, h, comps, e := stb.Load(path)
 			defer stb.Free(pixPtr)
 			if e != nil {
@@ -50,7 +59,7 @@ func main() {
 				if strings.HasSuffix(path, ".jpeg") { // skip .jpg normal map
 					return
 				}
-				quality = 100
+				qua = 100
 			}
 
 			ext := filepath.Ext(path)
@@ -64,12 +73,15 @@ func main() {
 				return
 			}
 			defer wr.Close()
-			cfg, e := webp.ConfigPreset(webp.PRESET_PHOTO, quality)
+			cfg := webp.NewConfig(webp.SET_PHOTO, qua)
+			if qua == 100 {
+				cfg.SetLossless(true)
+			}
 			if e != nil {
 				fmt.Printf("crate webp config failed, %s, error:%s\n", name, e)
 				return
 			}
-			if e = webp.EncodePixBytes(wr, pix, w, h, comps, cfg); e != nil {
+			if e = webp.EncodeBytes(wr, pix, w, h, comps, cfg); e != nil {
 				fmt.Printf("encode %s failed, error:%s\n", name, e)
 			}
 		}(path)
