@@ -64,7 +64,7 @@ func main() {
 			pixPtr, w, h, comps, e := stb.Load(path)
 			defer stb.Free(pixPtr)
 			if e != nil {
-				fmt.Printf("encode image failde %s", path)
+				fmt.Printf("encode image failde %s\n", path)
 				return
 			}
 
