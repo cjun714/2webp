@@ -16,24 +16,40 @@ import (
 )
 
 var quality int = 95
+var width, height = 0, 0
+var rescale = 1.0
 
 func main() {
 	src := os.Args[1]
 	targetDir := os.Args[1]
 
 	var e error
-	if len(os.Args) == 3 {
-		if strings.HasPrefix(os.Args[2], "-q") {
-			quality, e = strconv.Atoi(os.Args[2][2:])
-			if e != nil {
-				panic(e)
+	if len(os.Args) >= 3 {
+		args := os.Args[2:]
+		for _, str := range args {
+			if strings.HasPrefix(str, "-q") {
+				quality, e = strconv.Atoi(str[2:])
+				if e != nil {
+					panic(e)
+				}
+			} else if strings.HasPrefix(str, "-w") {
+				if width, e = strconv.Atoi(str[2:]); e != nil {
+					panic(e)
+				}
+			} else if strings.HasPrefix(str, "-h") {
+				if height, e = strconv.Atoi(str[2:]); e != nil {
+					panic(e)
+				}
+			} else if strings.HasPrefix(str, "-r") {
+				if rescale, e = strconv.ParseFloat(str[2:], 10); e != nil {
+					panic(e)
+				}
 			}
-		} else {
-			targetDir = os.Args[2]
 		}
 	}
 
-	fmt.Println("quality:", quality)
+	fmt.Println("quality:", quality, " | width:", width, " | height:", height,
+		" | rescale:", rescale)
 	var wg sync.WaitGroup
 	e = filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if !isImage(path) {
@@ -74,6 +90,11 @@ func main() {
 			}
 			defer wr.Close()
 			cfg := webp.NewConfig(webp.SET_PHOTO, qua)
+			if width != 0 || height != 0 {
+				cfg.SetResize(width, height)
+			} else {
+				cfg.SetResizeScale(float32(rescale))
+			}
 			if qua == 100 {
 				cfg.SetLossless(true)
 			}
