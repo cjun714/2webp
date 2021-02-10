@@ -91,7 +91,9 @@ func main() {
 			defer wr.Close()
 			cfg := webp.NewConfig(webp.SET_PHOTO, qua)
 			if width != 0 || height != 0 {
-				cfg.SetResize(width, height)
+				if w > width && h > height {
+					cfg.SetResize(width, height)
+				}
 			} else {
 				cfg.SetResizeScale(float32(rescale))
 			}
@@ -136,6 +138,7 @@ func isImage(path string) bool {
 }
 
 func isNormal(pix []byte, comps int) bool {
+	return false
 	var r, g, b uint8
 
 	switch comps {
