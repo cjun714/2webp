@@ -64,7 +64,7 @@ func main() {
 			pixPtr, w, h, comps, e := stb.Load(path)
 			defer stb.Free(pixPtr)
 			if e != nil {
-				fmt.Printf("encode image failed %s\n", path)
+				fmt.Printf("decode image failed %s\n", path, "error:", e)
 				return
 			}
 
@@ -139,6 +139,7 @@ func isImage(path string) bool {
 
 func isNormal(pix []byte, comps int) bool {
 	return false
+
 	var r, g, b uint8
 
 	switch comps {
