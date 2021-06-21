@@ -10,6 +10,7 @@ import (
 	"sync"
 	"unsafe"
 
+	"github.com/cjun714/glog/log"
 	"github.com/cjun714/go-image-stb/stb"
 	_ "github.com/cjun714/go-image/tga"
 	"github.com/cjun714/go-image/webp"
@@ -61,22 +62,25 @@ func main() {
 			defer wg.Done()
 
 			qua := quality
-			pixPtr, w, h, comps, e := stb.Load(path)
-			defer stb.Free(pixPtr)
+
+			var pixPtr *uint8
+			var w, h, comps int
+			var e error
+
+			if isWebp(path) {
+				pixPtr, w, h, comps, e = webp.Load(path)
+				defer webp.Free(pixPtr)
+			} else {
+				pixPtr, w, h, comps, e = stb.Load(path)
+				defer stb.Free(pixPtr)
+			}
+
 			if e != nil {
-				fmt.Printf("decode image failed %s\n", path, "error:", e)
+				log.E("decode image failed:", path, "error:", e)
 				return
 			}
 
 			pix := C.GoBytes(unsafe.Pointer(pixPtr), C.int(w*h*comps))
-			if isNormal(pix, comps) {
-				fmt.Println("normal map:", path)
-
-				if strings.HasSuffix(path, ".jpeg") { // skip .jpg normal map
-					return
-				}
-				qua = 100
-			}
 
 			ext := filepath.Ext(path)
 			name := strings.TrimSuffix(path, ext)
@@ -85,7 +89,7 @@ func main() {
 
 			wr, e := os.Create(name)
 			if e != nil {
-				fmt.Printf("create file %s failed, error:%s\n", name, e)
+				log.E("create file failed:", name, "error:", e)
 				return
 			}
 			defer wr.Close()
@@ -101,11 +105,11 @@ func main() {
 				cfg.SetLossless(true)
 			}
 			if e != nil {
-				fmt.Printf("crate webp config failed, %s, error:%s\n", name, e)
+				log.E("crate webp config failed", name, "error:", e)
 				return
 			}
 			if e = webp.EncodeBytes(wr, pix, w, h, comps, cfg); e != nil {
-				fmt.Printf("encode %s failed, error:%s\n", name, e)
+				log.E("encode webp failed", name, "error:", e)
 			}
 		}(path)
 
@@ -124,6 +128,7 @@ var imgExt = []string{
 	".png",
 	".tga",
 	".bmp",
+	".webp",
 }
 
 func isImage(path string) bool {
@@ -135,6 +140,11 @@ func isImage(path string) bool {
 	}
 
 	return false
+}
+
+func isWebp(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	return ext == ".webp"
 }
 
 func isNormal(pix []byte, comps int) bool {
